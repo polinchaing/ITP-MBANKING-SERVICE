@@ -1,0 +1,14 @@
+eureka:
+  instance:
+    instance-id: ${spring.application.name}
+    prefer-ip-address: true
+spring:
+  application:
+    name: customer
+  config:
+    import: configserver:http://localhost:8888
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:9090
