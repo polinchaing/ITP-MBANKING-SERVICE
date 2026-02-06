@@ -13,9 +13,12 @@ spring:
     import: optional:configserver:http://localhost:8888
   cloud:
     function:
-      definition: processProduct;processMessage;processProductDetail;processDebeziumProduct;processOracleXmlData
+      definition: processProduct;processMessage;processProductDetail;processDebeziumProduct;processOracleXmlData;captureEnvelope
     stream:
       bindings:
+        captureEnvelope-in-0:
+          destination: ITP.CORE_BANKING.RECORD_XML
+          group: envelope-data-consumer
         processProductDetail-in-0:
           destination: product-detail # topic_name
           group: monitor-group2 # consumer_group_id
@@ -61,6 +64,13 @@ spring:
                 spring.deserializer.key.delegate.class: io.confluent.kafka.serializers.KafkaAvroDeserializer
                 spring.deserializer.value.delegate.class: io.confluent.kafka.serializers.KafkaAvroDeserializer
                 specific.avro.reader: false
+          captureEnvelope-in-0:
+            consumer:
+              configuration:
+                schema.registry.url: http://localhost:8081
+                key.deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+                value.deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+                specific.avro.reader: true
   security:
     oauth2:
       resourceserver:

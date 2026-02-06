@@ -1,5 +1,7 @@
 package co.istad.polin.pipeline_service.stream;
 
+import ITP.CORE_BANKING.RECORD_XML.Envelope;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -34,47 +36,47 @@ public class StreamConfig {
      GenericRecord → toString() → JSON → Jackson → POJO
      ---------------------------------------------------------
      */
-    @Bean
-    public Consumer<Message<Objects>> processOracleXmlData() {
-        return msg -> {
-            try {
-                Object body = msg.getPayload();
-
-                log.info("Payload class: {}", body.getClass().getName());
-
-                // convert Avro GenericRecord → JSON text
-                String jsonText = body.toString();
-
-                // map JSON → Debezium envelope
-                DebeziumEnvelope<DataRecord> event =
-                            objectMapper.readValue(jsonText, new TypeReference<>() {});
-
-                // operation type (c/u/d/r)
-                System.out.println("Operation: " + event.getOp());
-
-                // choose after or before
-                DataRecord data =
-                        event.getAfter() != null
-                                ? event.getAfter()
-                                : event.getBefore();
-
-                if (data == null) return;
-
-                System.out.println("RECID: " + data.getRECID());
-
-                XmlData xml = data.getXMLDATA();
-                if (xml != null) {
-                    System.out.println("Name: " + xml.getName());
-                    System.out.println("Role: " + xml.getRole());
-                }
-
-                System.out.println();
-
-            } catch (Exception ex) {
-                log.error("processOracleXmlData error", ex);
-            }
-        };
-    }
+//    @Bean
+//    public Consumer<Message<Objects>> processOracleXmlData() {
+//        return msg -> {
+//            try {
+//                Object body = msg.getPayload();
+//
+//                log.info("Payload class: {}", body.getClass().getName());
+//
+//                // convert Avro GenericRecord → JSON text
+//                String jsonText = body.toString();
+//
+//                // map JSON → Debezium envelope
+//                DebeziumEnvelope<DataRecord> event =
+//                            objectMapper.readValue(jsonText, new TypeReference<>() {});
+//
+//                // operation type (c/u/d/r)
+//                System.out.println("Operation: " + event.getOp());
+//
+//                // choose after or before
+//                DataRecord data =
+//                        event.getAfter() != null
+//                                ? event.getAfter()
+//                                : event.getBefore();
+//
+//                if (data == null) return;
+//
+//                System.out.println("RECID: " + data.getRECID());
+//
+//                XmlData xml = data.getXMLDATA();
+//                if (xml != null) {
+//                    System.out.println("Name: " + xml.getName());
+//                    System.out.println("Role: " + xml.getRole());
+//                }
+//
+//                System.out.println();
+//
+//            } catch (Exception ex) {
+//                log.error("processOracleXmlData error", ex);
+//            }
+//        };
+//    }
 
     //    @Bean
     //    public Consumer<Message<Object>> processOracleXmlData(){
@@ -164,4 +166,48 @@ public class StreamConfig {
             System.out.println("==========================");
         };
     }
+
+    @Bean
+    public Consumer<Message<Envelope>> captureEnvelope(){
+        return record->{
+            System.out.println("Dbz Envelope : " + record.getPayload()
+                    .getAfter());
+        };
+    }
+
+    @Bean
+    public Function<Message<Object>, DataRecord> processOracleXmlData(ObjectMapper objectMapper) {
+        return record -> {
+            try {
+                DebeziumEnvelope<DataRecord> capturedRecord =
+                        objectMapper.readValue(record.getPayload().toString(),
+                                new TypeReference<>(){});
+                return switch (capturedRecord.getOp()) {
+                    case "r", "c" -> {
+                        System.out.println("Prepare to insert new record");
+                        DataRecord after = capturedRecord.getAfter();
+                        System.out.println(after.getXMLDATA().getName());
+                        yield after;
+                    }
+                    case "u" -> {
+                        System.out.println("Prepare to update existing record");
+                        DataRecord after = capturedRecord.getAfter();
+                        System.out.println("Updated: " + after.getXMLDATA().getName());
+                        yield after;
+                    }
+                    case "d" -> {
+                        System.out.println("Prepare to delete existing record");
+                        System.out.println("Delete ID = " + capturedRecord.getBefore().getRECID());
+                        yield capturedRecord.getBefore();
+                    }
+                    default -> throw new IllegalStateException("Invalid Operation..!");
+                };
+            } catch (JsonProcessingException e) {
+                System.out.println("Error deserialized");
+                throw new RuntimeException("Error deserialized");
+            }
+        };
+    }
+
+
 }
